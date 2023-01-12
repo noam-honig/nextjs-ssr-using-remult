@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Inter } from "@next/font/google";
 import styles from "../styles/Home.module.css";
 import { GetServerSideProps } from "next";
+import React from "react";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,7 +21,7 @@ export const getServerSideProps: GetServerSideProps<theProps> = async (
   };
 };
 
-export default function Home(props: theProps) {
+const Home: React.FunctionComponent<theProps> = (props) => {
   console.log(props);
   return (
     <>
@@ -137,4 +138,5 @@ export default function Home(props: theProps) {
       </main>
     </>
   );
-}
+};
+export default Home;
