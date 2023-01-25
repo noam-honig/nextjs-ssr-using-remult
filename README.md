@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Next.js SSR with remult
 
-## Getting Started
+This repo was created based on the [Build a Full-Stack Next.js Application
+](https://remult.dev/tutorials/react-next/) tutorial
 
-First, run the development server:
+To use remult in the `getServerSideProps` functions, there are some subtleties that need to be handled
 
-```bash
-npm run dev
-# or
-yarn dev
+1. We need a remult object on the server configured according to the current request (user info etc...)
+2. We need to serialize the result to simple JSON, that next can send to the render function.
+
+## Step 1 - add `withRemult` function to api
+To use remult in the `getServerSideProps` let's first add a utility function to the `src/server/api.ts` file
+```ts
+import {
+  GetServerSideProps,
+  GetServerSidePropsContext,
+  GetServerSidePropsResult,
+  PreviewData,
+} from "next";
+import { ParsedUrlQuery } from "querystring";
+
+export function withRemult<
+  P extends { [key: string]: any } = { [key: string]: any },
+  Q extends ParsedUrlQuery = ParsedUrlQuery,
+  D extends PreviewData = PreviewData
+>(
+  getServerPropsFunction: GetServerSideProps<P, Q, D>
+): GetServerSideProps<P, Q, D> {
+  return (context: GetServerSidePropsContext<Q, D>) => {
+    return new Promise<GetServerSidePropsResult<P>>((res, err) => {
+      api.withRemult(context, undefined!, async () => {
+        try {
+          let r = await getServerPropsFunction(context);
+          res(JSON.parse(JSON.stringify(r)));
+        } catch (e) {
+          err(e);
+        }
+      });
+    });
+  };
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Wrap the `getServerSideProps` call
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+Consider the following code, which shows a next.js component that uses `getServerSideProps` to get data from the server:
+*src/index.tsx*
+```ts
+import styles from "../styles/Home.module.css";
+import { GetServerSideProps } from "next";
+import React from "react";
+import { Task } from "../src/shared/Task";
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+type HomeProps = {
+  tasks: Task[];
+};
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+export const getServerSideProps: GetServerSideProps<HomeProps> = async (
+  context
+) => {
+  return {
+    props: {
+      tasks: [],
+    },
+  };
+};
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+const Home: React.FunctionComponent<HomeProps> = ({ tasks }) => {
+  return (
+    <>
+        <h1>Tasks</h1>
+        <ul>
+          {tasks?.map((task) => (
+            <li key={task.id}>{task.title}</li>
+          ))}
+        </ul>
+    </>
+  );
+};
+export default Home;
+```
 
-## Learn More
+To adjust it to use remult we'll wrap the `getServerSideProps` function with a call to the `withRemult` function we've added in step 1 and then we can use `remult` in it and everything will work:
+```ts
+export const getServerSideProps: GetServerSideProps<HomeProps> = withRemult(
+  async (context) => {
+    return {
+      props: {
+        tasks: await remult.repo(Task).find(),
+      },
+    };
+  }
+);
+```
 
-To learn more about Next.js, take a look at the following resources:
+We can even make this shorter since the type definition can be inferred:
+```ts
+export const getServerSideProps = withRemult<HomeProps>(
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+* Please note, that next js has a limitation for sending non json objects (such as dates etc...) through server side props, if you need that, you'll need to handle that just like any other next project
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
